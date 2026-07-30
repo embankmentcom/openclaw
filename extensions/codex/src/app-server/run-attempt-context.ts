@@ -63,6 +63,7 @@ export async function prepareCodexAttemptContext(
     sessionFile: activeSessionFile,
     sessionId: activeSessionId,
     sessionKey: contextSessionKey,
+    sessionTarget: params.sessionTarget,
   };
   const historyState = {
     messages:

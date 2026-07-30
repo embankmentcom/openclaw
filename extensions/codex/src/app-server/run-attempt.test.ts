@@ -1597,7 +1597,6 @@ describe("runCodexAppServerAttempt", () => {
       type: string;
     }> = [];
     Object.assign(params, {
-      trajectorySessionFile: `sqlite:main:session-1:${path.join(tempDir, "openclaw-agent.sqlite")}`,
       trajectoryRecorder: {
         recordEvent: (type: string, data?: { prompt?: string; systemPrompt?: string }) => {
           trajectoryEvents.push({ type, data });
@@ -3534,7 +3533,7 @@ describe("runCodexAppServerAttempt", () => {
   it("captures the complete mirrored branch through a settled tool-result boundary", async () => {
     const storePath = path.join(tempDir, "settled-finalization-context.sqlite");
     const sessionId = "session-settled-finalization-context";
-    const sessionFile = `sqlite:main:${sessionId}:${storePath}`;
+    const sessionFile = `agent:main:${sessionId}`;
     const workspaceDir = path.join(tempDir, "workspace-settled-finalization-context");
     const harness = createStartedThreadHarness();
     const params = createParams(sessionFile, workspaceDir);
