@@ -48,7 +48,7 @@ export function fingerprintCodexCanonicalPrompt(message: AgentMessage): string {
   return createHash("sha256").update(stableStringify(record)).digest("hex").slice(0, 32);
 }
 
-export function buildCodexCanonicalPromptEvidence(
+function buildCodexCanonicalPromptEvidence(
   source: AgentMessage,
   persisted: AgentMessage,
 ): CodexCanonicalPromptEvidence | undefined {
