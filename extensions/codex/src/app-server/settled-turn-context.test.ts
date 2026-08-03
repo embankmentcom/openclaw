@@ -1,7 +1,8 @@
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { captureCodexSettledTurnFinalizationContext } from "./settled-turn-context.js";
-import { attachCodexMirrorIdentity } from "./upstream-prompt-provenance.js";
+import { fingerprintCodexCanonicalPrompt } from "./transcript-mirror-attestation.js";
+import { attachCodexMirrorIdentity, readMirrorIdentity } from "./upstream-prompt-provenance.js";
 
 const mocks = vi.hoisted(() => ({
   readHistory: vi.fn(),
@@ -42,11 +43,17 @@ async function captureContext(params: {
   mirroredMessages: AgentMessage[];
   settledMessages: AgentMessage[];
   turnId?: string;
+  canonicalPromptEvidence?: Parameters<
+    typeof captureCodexSettledTurnFinalizationContext
+  >[0]["canonicalPromptEvidence"];
 }) {
   mocks.readHistory.mockResolvedValue(params.historyMessages);
   return captureCodexSettledTurnFinalizationContext({
     sessionFile: "/tmp/session.jsonl",
     sessionId: "session-1",
+    ...(params.canonicalPromptEvidence
+      ? { canonicalPromptEvidence: params.canonicalPromptEvidence }
+      : {}),
     mirroredMessages: params.mirroredMessages,
     settledMessages: params.settledMessages,
     turnId: params.turnId ?? "turn-2",
@@ -77,6 +84,83 @@ describe("captureCodexSettledTurnFinalizationContext", () => {
     });
     expect(Object.isFrozen(context?.messages)).toBe(true);
     expect(context?.messages).not.toBe(historyMessages);
+  });
+
+  it("accepts one exact canonical gateway prompt row without mutating its identity", async () => {
+    const settledMessages = settledTurn();
+    const canonicalPrompt = {
+      role: "user",
+      content: "Send it.",
+      timestamp: 1_785_750_000_000,
+      idempotencyKey: "channel-user:v1:turn-2",
+    } as AgentMessage;
+    const canonicalPromptEvidence = {
+      idempotencyKey: "channel-user:v1:turn-2",
+      mirrorIdentity: "turn-2:prompt",
+      sourceFingerprint: fingerprintCodexCanonicalPrompt(canonicalPrompt),
+    };
+    const historyMessages = [canonicalPrompt, ...settledMessages.slice(1)];
+
+    const context = await captureContext({
+      canonicalPromptEvidence,
+      historyMessages,
+      mirroredMessages: settledMessages.slice(1),
+      settledMessages,
+    });
+
+    expect(context?.messages).toEqual(historyMessages);
+    expect(readMirrorIdentity(context?.messages[0] as AgentMessage)).toBeUndefined();
+  });
+
+  it.each([
+    ["different content", { content: "Different prompt." }],
+    ["foreign identity", { __openclaw: { mirrorIdentity: "turn-1:prompt" } }],
+    ["different idempotency key", { idempotencyKey: "channel-user:v1:other" }],
+  ])("fails closed for canonical gateway prompt evidence with %s", async (_name, override) => {
+    const settledMessages = settledTurn();
+    const canonicalPrompt = {
+      role: "user",
+      content: "Send it.",
+      timestamp: 1_785_750_000_000,
+      idempotencyKey: "channel-user:v1:turn-2",
+    } as AgentMessage;
+    const persistedPrompt = { ...canonicalPrompt, ...override } as AgentMessage;
+
+    await expect(
+      captureContext({
+        canonicalPromptEvidence: {
+          idempotencyKey: "channel-user:v1:turn-2",
+          mirrorIdentity: "turn-2:prompt",
+          sourceFingerprint: fingerprintCodexCanonicalPrompt(canonicalPrompt),
+        },
+        historyMessages: [persistedPrompt, ...settledMessages.slice(1)],
+        mirroredMessages: settledMessages.slice(1),
+        settledMessages,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails closed when canonical gateway prompt evidence matches multiple history rows", async () => {
+    const settledMessages = settledTurn();
+    const canonicalPrompt = {
+      role: "user",
+      content: "Send it.",
+      timestamp: 1_785_750_000_000,
+      idempotencyKey: "channel-user:v1:turn-2",
+    } as AgentMessage;
+
+    await expect(
+      captureContext({
+        canonicalPromptEvidence: {
+          idempotencyKey: "channel-user:v1:turn-2",
+          mirrorIdentity: "turn-2:prompt",
+          sourceFingerprint: fingerprintCodexCanonicalPrompt(canonicalPrompt),
+        },
+        historyMessages: [canonicalPrompt, canonicalPrompt, ...settledMessages.slice(1)],
+        mirroredMessages: settledMessages.slice(1),
+        settledMessages,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it.each([

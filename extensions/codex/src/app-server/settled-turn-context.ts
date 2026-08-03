@@ -8,7 +8,11 @@ import {
   readCodexMirroredSessionHistoryMessages,
   type CodexMirroredSessionHistoryTarget,
 } from "./session-history.js";
-import { serializeCodexMirrorSourceEvidence } from "./transcript-mirror-attestation.js";
+import {
+  fingerprintCodexCanonicalPrompt,
+  serializeCodexMirrorSourceEvidence,
+  type CodexCanonicalPromptEvidence,
+} from "./transcript-mirror-attestation.js";
 import { readMirrorIdentity } from "./upstream-prompt-provenance.js";
 
 type SettledTurnFinalizationContext = EmbeddedRunAttemptResult["settledTurnFinalizationContext"];
@@ -32,6 +36,7 @@ function collectUniqueMessageIdentities(
 
 /** Freezes one complete active transcript branch through the settled tool-result boundary. */
 function buildCodexSettledTurnFinalizationContext(params: {
+  canonicalPromptEvidence?: CodexCanonicalPromptEvidence;
   historyMessages: readonly AgentMessage[];
   mirroredMessages: readonly AgentMessage[];
   settledMessages: readonly AgentMessage[];
@@ -50,15 +55,15 @@ function buildCodexSettledTurnFinalizationContext(params: {
   }
 
   const settledBoundaryIndex = params.settledMessages.indexOf(boundaryMessage);
-  const requiredIdentities = params.settledMessages
-    .slice(0, settledBoundaryIndex + 1)
-    .map(readMirrorIdentity);
-  if (
-    requiredIdentities.length === 0 ||
-    requiredIdentities.some((identity) => !identity) ||
-    new Set(requiredIdentities).size !== requiredIdentities.length ||
-    !requiredIdentities.includes(`${params.turnId}:prompt`)
-  ) {
+  const requiredIdentities: string[] = [];
+  for (const message of params.settledMessages.slice(0, settledBoundaryIndex + 1)) {
+    const identity = readMirrorIdentity(message);
+    if (!identity || requiredIdentities.includes(identity)) {
+      return undefined;
+    }
+    requiredIdentities.push(identity);
+  }
+  if (requiredIdentities.length === 0 || !requiredIdentities.includes(`${params.turnId}:prompt`)) {
     return undefined;
   }
 
@@ -67,15 +72,23 @@ function buildCodexSettledTurnFinalizationContext(params: {
   if (!historyIdentities || !mirroredIdentities) {
     return undefined;
   }
+  const promptIdentity = `${params.turnId}:prompt`;
+  const canonicalPromptEvidence =
+    params.canonicalPromptEvidence?.mirrorIdentity === promptIdentity
+      ? params.canonicalPromptEvidence
+      : undefined;
   const mirroredBoundaryIndex = mirroredIdentities.get(boundaryIdentity);
   if (mirroredBoundaryIndex === undefined) {
     return undefined;
   }
   const mirroredThroughBoundary = params.mirroredMessages.slice(0, mirroredBoundaryIndex + 1);
+  const expectedMirroredIdentities = canonicalPromptEvidence
+    ? requiredIdentities.filter((identity) => identity !== promptIdentity)
+    : requiredIdentities;
   if (
-    mirroredThroughBoundary.length !== requiredIdentities.length ||
+    mirroredThroughBoundary.length !== expectedMirroredIdentities.length ||
     mirroredThroughBoundary.some(
-      (message, index) => readMirrorIdentity(message) !== requiredIdentities[index],
+      (message, index) => readMirrorIdentity(message) !== expectedMirroredIdentities[index],
     )
   ) {
     return undefined;
@@ -84,10 +97,31 @@ function buildCodexSettledTurnFinalizationContext(params: {
   if (historyBoundaryIndex === undefined) {
     return undefined;
   }
+  const mirroredByIdentity = new Map(
+    mirroredThroughBoundary.map((message) => [readMirrorIdentity(message), message] as const),
+  );
+  const canonicalHistoryMatches = canonicalPromptEvidence
+    ? params.historyMessages.flatMap((message, index) => {
+        const idempotencyKey = (message as { idempotencyKey?: unknown }).idempotencyKey;
+        return message.role === "user" &&
+          idempotencyKey === canonicalPromptEvidence.idempotencyKey &&
+          !readMirrorIdentity(message) &&
+          fingerprintCodexCanonicalPrompt(message) === canonicalPromptEvidence.sourceFingerprint
+          ? [index]
+          : [];
+      })
+    : [];
+  if (canonicalPromptEvidence && canonicalHistoryMatches.length !== 1) {
+    return undefined;
+  }
+
   let previousHistoryIndex = -1;
-  for (const mirroredMessage of mirroredThroughBoundary) {
-    const identity = readMirrorIdentity(mirroredMessage);
-    const historyIndex = identity ? historyIdentities.get(identity) : undefined;
+  for (const identity of requiredIdentities) {
+    const mirroredMessage = mirroredByIdentity.get(identity);
+    const historyIndex =
+      identity === promptIdentity && canonicalPromptEvidence
+        ? canonicalHistoryMatches[0]
+        : historyIdentities.get(identity);
     const historyMessage =
       historyIndex === undefined ? undefined : params.historyMessages[historyIndex];
     if (
@@ -95,8 +129,10 @@ function buildCodexSettledTurnFinalizationContext(params: {
       historyIndex <= previousHistoryIndex ||
       historyIndex > historyBoundaryIndex ||
       !historyMessage ||
-      serializeCodexMirrorSourceEvidence(historyMessage) !==
-        serializeCodexMirrorSourceEvidence(mirroredMessage)
+      ((!canonicalPromptEvidence || identity !== promptIdentity) &&
+        (!mirroredMessage ||
+          serializeCodexMirrorSourceEvidence(historyMessage) !==
+            serializeCodexMirrorSourceEvidence(mirroredMessage)))
     ) {
       return undefined;
     }
@@ -114,6 +150,7 @@ function buildCodexSettledTurnFinalizationContext(params: {
 /** Reads and freezes the current active transcript branch after mirroring has settled. */
 export async function captureCodexSettledTurnFinalizationContext(
   params: CodexMirroredSessionHistoryTarget & {
+    canonicalPromptEvidence?: CodexCanonicalPromptEvidence;
     mirroredMessages: readonly AgentMessage[];
     settledMessages: readonly AgentMessage[];
     turnId: string;
@@ -125,6 +162,9 @@ export async function captureCodexSettledTurnFinalizationContext(
       return undefined;
     }
     return buildCodexSettledTurnFinalizationContext({
+      ...(params.canonicalPromptEvidence
+        ? { canonicalPromptEvidence: params.canonicalPromptEvidence }
+        : {}),
       historyMessages,
       mirroredMessages: params.mirroredMessages,
       settledMessages: params.settledMessages,

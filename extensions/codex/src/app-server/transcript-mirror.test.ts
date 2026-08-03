@@ -27,6 +27,7 @@ import {
   projectBoundedCodexThreadHistory,
 } from "./transcript-mirror.js";
 import { attachCodexMirrorIdentity } from "./upstream-prompt-provenance.js";
+import { buildResolvedCodexUserPromptMessage } from "./user-prompt-message.js";
 
 const mirrorCodexAppServerTranscript = codexTranscriptMirrorRuntime.mirror;
 const mirrorTranscriptBestEffort = codexTranscriptMirrorRuntime.mirrorBestEffort;
@@ -102,6 +103,36 @@ describe("buildCodexUserPromptMessage", () => {
       MediaType: "image/png",
       MediaTypes: ["image/png"],
     });
+  });
+
+  it("prefers the exact persisted gateway row after a write hook transforms it", async () => {
+    const resolveMessage = vi.fn(async () =>
+      makeAgentUserMessage({ content: "unredacted source", timestamp: 1_785_750_000_000 }),
+    );
+    const persistedMessage = castAgentMessage({
+      ...makeAgentUserMessage({ content: "[redacted by hook]", timestamp: 1_785_750_000_000 }),
+      idempotencyKey: "channel-user:v1:turn-1",
+    });
+
+    const message = await buildResolvedCodexUserPromptMessage({
+      prompt: "unredacted source",
+      userTurnTranscriptRecorder: {
+        message: makeAgentUserMessage({
+          content: "unredacted source",
+          timestamp: 1_785_750_000_000,
+        }),
+        resolveMessage,
+        getPersistedMessage: () => persistedMessage,
+      },
+    } as unknown as Parameters<typeof buildResolvedCodexUserPromptMessage>[0]);
+
+    expect(message).toMatchObject({
+      role: "user",
+      content: "[redacted by hook]",
+      idempotencyKey: "channel-user:v1:turn-1",
+    });
+    expect(resolveMessage).not.toHaveBeenCalled();
+    expect(JSON.stringify(message)).not.toContain("unredacted source");
   });
 });
 

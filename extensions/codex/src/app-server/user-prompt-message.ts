@@ -79,6 +79,8 @@ export function promptSnapshot(
 export async function buildResolvedCodexUserPromptMessage(
   params: EmbeddedRunAttemptParams,
 ): Promise<AgentMessage> {
-  const resolvedMessage = await params.userTurnTranscriptRecorder?.resolveMessage();
-  return buildFromPrepared(params, resolvedMessage ?? params.userTurnTranscriptRecorder?.message);
+  const recorder = params.userTurnTranscriptRecorder;
+  const persistedMessage = recorder?.getPersistedMessage?.();
+  const resolvedMessage = persistedMessage ?? (await recorder?.resolveMessage());
+  return buildFromPrepared(params, resolvedMessage ?? recorder?.message);
 }

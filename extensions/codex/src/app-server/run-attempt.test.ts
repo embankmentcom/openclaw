@@ -20,7 +20,10 @@ import { registerPluginCommand } from "openclaw/plugin-sdk/plugin-runtime";
 import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { GPT5_BEHAVIOR_CONTRACT as CODEX_GPT5_BEHAVIOR_CONTRACT } from "openclaw/plugin-sdk/provider-model-shared";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
-import { readSessionTranscriptEvents } from "openclaw/plugin-sdk/session-transcript-runtime";
+import {
+  readSessionTranscriptEvents,
+  withSessionTranscriptWriteLock,
+} from "openclaw/plugin-sdk/session-transcript-runtime";
 import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { defaultCodexAppInventoryCache } from "./app-inventory-cache.js";
@@ -3530,7 +3533,7 @@ describe("runCodexAppServerAttempt", () => {
     });
   });
 
-  it("captures the complete mirrored branch through a settled tool-result boundary", async () => {
+  it("captures a settled branch when the gateway canonical prompt wins persistence", async () => {
     const storePath = path.join(tempDir, "settled-finalization-context.sqlite");
     const sessionId = "session-settled-finalization-context";
     const sessionFile = `agent:main:${sessionId}`;
@@ -3539,6 +3542,37 @@ describe("runCodexAppServerAttempt", () => {
     const params = createParams(sessionFile, workspaceDir);
     attachSqliteSessionTarget(params, storePath, sessionId);
     params.prompt = "Send the update to Alice.";
+    const canonicalPrompt = {
+      role: "user",
+      content: "Send the update to Alice.",
+      timestamp: 1_785_750_000_000,
+      idempotencyKey: "channel-user:v1:settled-finalization",
+    } as const;
+    params.userTurnTranscriptRecorder = {
+      message: canonicalPrompt,
+      resolveMessage: async () => canonicalPrompt,
+      getPersistedMessage: () => canonicalPrompt,
+      markRuntimePersistencePending: () => undefined,
+      markRuntimePersisted: () => undefined,
+      markBlocked: () => undefined,
+      hasPersisted: () => true,
+      isBlocked: () => false,
+      hasRuntimePersistencePending: () => false,
+      waitForRuntimePersistence: async () => undefined,
+      persistApproved: async () => undefined,
+      persistBlocked: async () => undefined,
+      persistFallback: async () => undefined,
+    };
+    const sessionKey = params.sessionKey;
+    if (!sessionKey) {
+      throw new Error("expected SQLite session target");
+    }
+    await withSessionTranscriptWriteLock(
+      { agentId: "main", sessionId, sessionKey, storePath },
+      async (transcript) => {
+        await transcript.appendMessage({ message: canonicalPrompt, cwd: workspaceDir });
+      },
+    );
     const run = runCodexAppServerAttempt(params);
     await harness.waitForMethod("turn/start");
     await harness.notify(
@@ -3582,6 +3616,9 @@ describe("runCodexAppServerAttempt", () => {
       ],
     });
     expect(Object.isFrozen(result.settledTurnFinalizationContext?.messages)).toBe(true);
+    const persistedMessages = await readTranscriptMessagesByIdentity(params);
+    expect(persistedMessages.filter((message) => message.role === "user")).toHaveLength(1);
+    expect(persistedMessages[0]?.["__openclaw"]).toBeUndefined();
   });
   it("preserves every command failure from official app-server events", async () => {
     const sessionFile = path.join(tempDir, "session-multi-command-failure.jsonl");
