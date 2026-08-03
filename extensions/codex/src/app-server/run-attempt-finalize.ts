@@ -342,6 +342,7 @@ export async function finalizeCodexAttempt(
   const settledTurnFinalizationContext = shouldCaptureSettledTurnFinalizationContext
     ? await captureCodexSettledTurnFinalizationContext({
         ...activeTranscriptTarget,
+        canonicalPromptEvidence: mirrorOutcome.canonicalPromptEvidence,
         mirroredMessages: mirrorOutcome.mirroredMessages,
         settledMessages: result.messagesSnapshot,
         turnId: activeTurnId,

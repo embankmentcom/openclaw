@@ -22,6 +22,7 @@ import {
   attachCodexMirrorAttestation,
   fingerprintCodexMirrorSourceMessage,
   readCodexMirrorSourceFingerprint,
+  resolvePromptEvidence,
 } from "./transcript-mirror-attestation.js";
 import {
   attachCodexMirrorIdentity,
@@ -340,6 +341,7 @@ async function mirrorBestEffort(params: {
 }): Promise<{
   assistantTranscriptOwned: boolean;
   assistantTranscriptIdempotencyKey?: string;
+  canonicalPromptEvidence?: ReturnType<typeof resolvePromptEvidence>;
   mirroredMessages: MirroredAgentMessage[];
 }> {
   try {
@@ -355,11 +357,8 @@ async function mirrorBestEffort(params: {
       storePath: params.params.sessionTarget?.storePath,
       cwd: params.cwd,
       messages,
-      // Scope is thread-stable. Each entry in `messagesSnapshot` is tagged
-      // with a per-turn `attachCodexMirrorIdentity` value carrying its own
-      // turnId, so distinct turns produce distinct dedupe keys via the
-      // identity (not via the scope). Dropping `turnId` from the scope here is
-      // what lets a re-emitted prior-turn entry collide with its existing key.
+      // Per-message identities distinguish turns; a thread-stable scope lets
+      // re-emitted prior-turn entries collide with their existing keys.
       idempotencyScope: `codex-app-server:${params.threadId}`,
       config: params.params.config,
     });
@@ -388,6 +387,8 @@ async function mirrorBestEffort(params: {
         readCodexMirrorSourceFingerprint(message) === expectedFingerprints.get(identity)
       );
     });
+    const persistedUsers = mirrorResult.userMessagesPresent;
+    const canonicalPromptEvidence = resolvePromptEvidence(messages, persistedUsers);
     const assistantMirrorIdentity = `${params.turnId}:assistant`;
     const assistantTranscriptOwned =
       mirrorResult.assistantMirrorIdentitiesOwned.includes(assistantMirrorIdentity);
@@ -400,6 +401,7 @@ async function mirrorBestEffort(params: {
     return {
       assistantTranscriptOwned,
       ...(assistantTranscriptIdempotencyKey ? { assistantTranscriptIdempotencyKey } : {}),
+      ...(canonicalPromptEvidence ? { canonicalPromptEvidence } : {}),
       mirroredMessages,
     };
   } catch (error) {
