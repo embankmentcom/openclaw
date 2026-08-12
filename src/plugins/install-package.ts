@@ -360,7 +360,9 @@ export async function installPluginFromArchive(
 ): Promise<InstallPluginResult> {
   const runtime = await loadPluginInstallRuntime();
   const logger = params.logger ?? defaultLogger;
-  const timeoutMs = params.timeoutMs ?? 120_000;
+  // Bundled official plugins can contain thousands of dependency files. Safe archive
+  // extraction is intentionally CPU-heavy and can exceed two minutes on smaller VMs.
+  const timeoutMs = params.timeoutMs ?? 600_000;
   const mode = params.mode ?? "install";
   const installPolicyRequest = params.installPolicyRequest ?? {
     kind: "plugin-archive",
