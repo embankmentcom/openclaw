@@ -42,6 +42,7 @@ describe("slack socket reconnect loop", () => {
     async (_label, createError) => {
       const controller = new AbortController();
       const runtimeError = vi.fn();
+      const setStatus = vi.fn();
       let attempts = 0;
       slackTestState.appStartMock.mockImplementation(async () => {
         attempts += 1;
@@ -61,6 +62,7 @@ describe("slack socket reconnect loop", () => {
           error: runtimeError,
           exit: vi.fn(),
         },
+        setStatus,
       });
 
       await vi.runAllTimersAsync();
@@ -74,6 +76,9 @@ describe("slack socket reconnect loop", () => {
         expect(previousStop).toBeLessThan(nextStart);
       }
       expect(runtimeError).toHaveBeenCalledWith(expect.stringContaining("retry 13/∞"));
+      expect(setStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ connected: false, lifecycle: "recovering" }),
+      );
     },
   );
 
@@ -115,7 +120,31 @@ describe("slack socket reconnect loop", () => {
     );
   });
 
-  it("keeps degraded identity health after a recoverable reconnect", async () => {
+  it("publishes blocked before rejecting a non-recoverable socket start failure", async () => {
+    const controller = new AbortController();
+    const setStatus = vi.fn();
+    slackTestState.appStartMock.mockRejectedValue(new Error("invalid_auth"));
+
+    await expect(
+      monitorSlackProvider({
+        botToken: "bot-token",
+        appToken: "app-token",
+        abortSignal: controller.signal,
+        config: slackTestState.config,
+        runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
+        setStatus,
+      }),
+    ).rejects.toThrow("invalid_auth");
+
+    expect(setStatus).toHaveBeenCalledWith({
+      connected: false,
+      lifecycle: "blocked",
+      terminalDisconnect: true,
+      lastError: "invalid_auth",
+    });
+  });
+
+  it("re-resolves degraded identity after a recoverable reconnect", async () => {
     getSlackClient().auth.test.mockResolvedValueOnce({
       app_id: "A1",
       user_id: "UUSER",
@@ -156,11 +185,14 @@ describe("slack socket reconnect loop", () => {
     await Promise.resolve();
 
     expect(setStatus).toHaveBeenCalledWith({
+      running: true,
       connected: true,
       lastConnectedAt: expect.any(Number),
-      healthState: "degraded",
-      lastError: expect.stringContaining("without bot_id"),
+      terminalDisconnect: undefined,
+      lifecycle: "ready",
+      lastError: null,
     });
+    expect(getSlackClient().auth.test).toHaveBeenCalledTimes(2);
     controller.abort();
     await expect(run).resolves.toBeUndefined();
   });
