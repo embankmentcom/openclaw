@@ -69,7 +69,9 @@ describe("slack socket reconnect loop", () => {
       await expect(run).resolves.toBeUndefined();
 
       expect(slackTestState.appStartMock).toHaveBeenCalledTimes(14);
-      expect(slackTestState.appStopMock).toHaveBeenCalledTimes(14);
+      // Each failed start is stopped before the next attempt, then the provider's
+      // final cleanup stops the app once more after the abort resolves the loop.
+      expect(slackTestState.appStopMock).toHaveBeenCalledTimes(15);
       for (let attempt = 1; attempt < 14; attempt += 1) {
         const previousStop = slackTestState.appStopMock.mock.invocationCallOrder[attempt - 1];
         const nextStart = slackTestState.appStartMock.mock.invocationCallOrder[attempt];
