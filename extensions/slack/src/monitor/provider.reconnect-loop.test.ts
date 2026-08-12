@@ -75,6 +75,9 @@ describe("slack socket reconnect loop", () => {
       for (let attempt = 1; attempt < 14; attempt += 1) {
         const previousStop = slackTestState.appStopMock.mock.invocationCallOrder[attempt - 1];
         const nextStart = slackTestState.appStartMock.mock.invocationCallOrder[attempt];
+        if (previousStop === undefined || nextStart === undefined) {
+          throw new Error(`missing invocation order for reconnect attempt ${attempt}`);
+        }
         expect(previousStop).toBeLessThan(nextStart);
       }
       expect(runtimeError).toHaveBeenCalledWith(expect.stringContaining("retry 13/∞"));
