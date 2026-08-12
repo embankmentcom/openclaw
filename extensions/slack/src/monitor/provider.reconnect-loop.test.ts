@@ -67,6 +67,12 @@ describe("slack socket reconnect loop", () => {
       await expect(run).resolves.toBeUndefined();
 
       expect(slackTestState.appStartMock).toHaveBeenCalledTimes(14);
+      expect(slackTestState.appStopMock).toHaveBeenCalledTimes(14);
+      for (let attempt = 1; attempt < 14; attempt += 1) {
+        const previousStop = slackTestState.appStopMock.mock.invocationCallOrder[attempt - 1];
+        const nextStart = slackTestState.appStartMock.mock.invocationCallOrder[attempt];
+        expect(previousStop).toBeLessThan(nextStart);
+      }
       expect(runtimeError).toHaveBeenCalledWith(expect.stringContaining("retry 13/∞"));
     },
   );

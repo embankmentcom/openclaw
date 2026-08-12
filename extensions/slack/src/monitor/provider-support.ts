@@ -316,7 +316,10 @@ export function createSlackBoltApp(params: {
   const socketModeLogger = createSlackSocketModeLogger();
   const socketModeReceiverOptions: SlackSocketModeReceiverOptions = {
     appToken: params.appToken ?? "",
-    autoReconnectEnabled: true,
+    // OpenClaw owns reconnect timing and channel health. Letting the Slack SDK
+    // reconnect independently can overlap this provider's retry loop and leave
+    // multiple live Socket Mode connections behind after start failures.
+    autoReconnectEnabled: false,
     clientPingTimeout: OPENCLAW_SLACK_CLIENT_PING_TIMEOUT_MS,
     logger: socketModeLogger,
     ...(params.dispatcher ? { dispatcher: params.dispatcher } : {}),

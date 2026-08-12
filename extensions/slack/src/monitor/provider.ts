@@ -785,6 +785,9 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
             break;
           }
         } catch (err) {
+          // A failed start can leave the SDK's socket client partially active.
+          // Stop it before either surfacing a permanent error or retrying.
+          await gracefulStop();
           if (isNonRecoverableSlackAuthError(err)) {
             runtime.error?.(
               `slack socket mode failed to start due to non-recoverable auth error — skipping channel (${formatUnknownError(err)})`,

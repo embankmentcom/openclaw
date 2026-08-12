@@ -158,7 +158,7 @@ describe("createSlackBoltApp", () => {
     expect(receiverLogger.warn).toBeTypeOf("function");
     expect(receiverArgs).toEqual({
       appToken: "xapp-test",
-      autoReconnectEnabled: true,
+      autoReconnectEnabled: false,
       clientPingTimeout: 15_000,
       logger: receiverLogger,
       installerOptions: {
@@ -377,7 +377,7 @@ describe("createSlackBoltApp", () => {
     expect(receiverLogger.warn).toBeTypeOf("function");
     expect(receiverArgs).toEqual({
       appToken: "xapp-test",
-      autoReconnectEnabled: true,
+      autoReconnectEnabled: false,
       clientPingTimeout: 15_000,
       logger: receiverLogger,
       installerOptions: {
