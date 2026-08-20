@@ -1111,8 +1111,11 @@ export async function prepareSlackMessage(params: {
     cfg,
     surface: "slack",
   });
+  const roomRequireMention = channelConfig?.requireMention ?? ctx.defaultRequireMention ?? true;
   const shouldRequireMention = isRoom
-    ? (channelConfig?.requireMention ?? ctx.defaultRequireMention)
+    ? isThreadReply
+      ? (channelConfig?.requireMentionInThreads ?? roomRequireMention)
+      : roomRequireMention
     : false;
   const implicitMentions = resolveChannelImplicitMentions({
     cfg,

@@ -16,6 +16,7 @@ import { normalizeSlackSlug, resolveSlackUserAllowListForTeam } from "./allow-li
 export type SlackChannelConfigResolved = {
   allowed: boolean;
   requireMention: boolean;
+  requireMentionInThreads?: boolean;
   ignoreOtherMentions?: boolean;
   replyToMode?: ReplyToMode;
   allowBots?: boolean | "mentions";
@@ -31,6 +32,7 @@ export type SlackChannelConfigResolved = {
 type SlackChannelConfigEntry = {
   enabled?: boolean;
   requireMention?: boolean;
+  requireMentionInThreads?: boolean;
   ignoreOtherMentions?: boolean;
   replyToMode?: ReplyToMode;
   allowBots?: boolean | "mentions";
@@ -109,6 +111,10 @@ export function resolveSlackChannelConfig(params: {
   const requireMention =
     firstDefined(resolved.requireMention, fallback?.requireMention, requireMentionDefault) ??
     requireMentionDefault;
+  const requireMentionInThreads = firstDefined(
+    resolved.requireMentionInThreads,
+    fallback?.requireMentionInThreads,
+  );
   const ignoreOtherMentions = firstDefined(
     resolved.ignoreOtherMentions,
     fallback?.ignoreOtherMentions,
@@ -133,6 +139,7 @@ export function resolveSlackChannelConfig(params: {
   const result: SlackChannelConfigResolved = {
     allowed,
     requireMention,
+    requireMentionInThreads,
     ignoreOtherMentions,
     replyToMode,
     allowBots,

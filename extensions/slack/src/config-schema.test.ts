@@ -328,12 +328,23 @@ describe("slack config schema", () => {
     },
   );
 
-  it("accepts per-channel replyToMode", () => {
+  it("accepts per-channel replyToMode and thread mention policy", () => {
     expectSlackConfigValid({
       channels: {
-        C123: { requireMention: false, replyToMode: "off" },
+        C123: { requireMention: false, requireMentionInThreads: true, replyToMode: "off" },
       },
     });
+  });
+
+  it("rejects invalid per-channel thread mention policy", () => {
+    expectSlackConfigIssue(
+      {
+        channels: {
+          C123: { requireMentionInThreads: "true" },
+        },
+      },
+      "channels.C123.requireMentionInThreads",
+    );
   });
 
   it("rejects invalid per-channel replyToMode", () => {

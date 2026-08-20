@@ -31,6 +31,8 @@ export type SlackChannelConfig = {
   enabled?: boolean;
   /** Require mentioning the bot to trigger replies. */
   requireMention?: boolean;
+  /** Override the mention requirement for Slack thread replies in this channel. */
+  requireMentionInThreads?: boolean;
   /**
    * Ignore room messages that mention another user or user group but not this bot.
    * Requires a resolved bot user ID. Default: false.

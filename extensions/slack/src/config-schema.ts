@@ -46,6 +46,7 @@ const SlackPresenceEventsSchema = z
 
 const SlackChannelSchema = buildGroupEntrySchema(
   {
+    requireMentionInThreads: z.boolean().optional(),
     ignoreOtherMentions: z.boolean().optional(),
     replyToMode: ReplyToModeSchema.optional(),
     allowBots: buildChannelAllowBotsSchema({ allowMentions: true }),

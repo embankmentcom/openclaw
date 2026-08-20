@@ -5098,6 +5098,55 @@ describe("slack implicit mention policy", () => {
     expect(result?.ctxPayload.ImplicitMentionKinds).toBeUndefined();
   });
 
+  it("admits unmentioned top-level messages while requiring mentions in new threads", async () => {
+    const ctx = createCtxWithImplicitMentions(undefined, {
+      channelsConfig: {
+        C123: { requireMention: false, requireMentionInThreads: true, replyToMode: "all" },
+      },
+    });
+    const topLevel = await prepareThreadMessage({
+      ctx,
+      message: {
+        text: "new issue",
+        ts: "1700000000.000001",
+        thread_ts: undefined,
+        parent_user_id: undefined,
+      },
+    });
+    const threadReply = await prepareThreadMessage({ ctx });
+
+    expect(topLevel?.ctxPayload.MentionSource).toBe("none");
+    expect(threadReply).toBeNull();
+  });
+
+  it("still accepts an explicit mention when thread replies require mentions", async () => {
+    const ctx = createCtxWithImplicitMentions(undefined, {
+      channelsConfig: {
+        C123: { requireMention: false, requireMentionInThreads: true, replyToMode: "all" },
+      },
+    });
+    const result = await prepareThreadMessage({
+      ctx,
+      message: { text: "<@B1> still need help" },
+    });
+
+    expect(result?.ctxPayload.MentionSource).toBe("explicit_bot");
+  });
+
+  it("keeps joined threads admitted when thread replies require mentions", async () => {
+    const threadTs = "1700000000.000000";
+    recordSlackThreadParticipation("default", "C123", threadTs);
+    const ctx = createCtxWithImplicitMentions(undefined, {
+      channelsConfig: {
+        C123: { requireMention: false, requireMentionInThreads: true, replyToMode: "all" },
+      },
+    });
+    const result = await prepareThreadMessage({ ctx, message: { thread_ts: threadTs } });
+
+    expect(result?.ctxPayload.MentionSource).toBe("implicit_thread");
+    expect(result?.ctxPayload.ImplicitMentionKinds).toEqual(["bot_thread_participant"]);
+  });
+
   const unauthorizedThreadCases: Array<{
     authorization: string;
     options: Pick<

@@ -13,6 +13,7 @@ function expectSlackChannelConfig(
   expected: {
     allowed?: boolean;
     requireMention?: boolean;
+    requireMentionInThreads?: boolean;
     matchKey?: string;
     matchSource?: "direct" | "wildcard";
   },
@@ -25,6 +26,9 @@ function expectSlackChannelConfig(
   }
   if (expected.requireMention !== undefined) {
     expect(res.requireMention).toBe(expected.requireMention);
+  }
+  if (expected.requireMentionInThreads !== undefined) {
+    expect(res.requireMentionInThreads).toBe(expected.requireMentionInThreads);
   }
   if (expected.matchKey !== undefined) {
     expect(res.matchKey).toBe(expected.matchKey);
@@ -59,6 +63,36 @@ describe("resolveSlackChannelConfig", () => {
       defaultRequireMention: false,
     });
     expectSlackChannelConfig(res, { requireMention: true });
+  });
+
+  it("resolves thread mention policy independently from top-level mention policy", () => {
+    const res = resolveSlackChannelConfig({
+      channelId: "C1",
+      channels: {
+        "*": { requireMention: true, requireMentionInThreads: false },
+        C1: { requireMention: false, requireMentionInThreads: true },
+      },
+      defaultRequireMention: true,
+    });
+    expectSlackChannelConfig(res, {
+      requireMention: false,
+      requireMentionInThreads: true,
+    });
+  });
+
+  it("uses wildcard thread mention policy when direct entry omits it", () => {
+    const res = resolveSlackChannelConfig({
+      channelId: "C1",
+      channels: {
+        "*": { requireMention: true, requireMentionInThreads: true },
+        C1: { requireMention: false },
+      },
+      defaultRequireMention: false,
+    });
+    expectSlackChannelConfig(res, {
+      requireMention: false,
+      requireMentionInThreads: true,
+    });
   });
 
   it("uses wildcard entries when no direct channel config exists", () => {
